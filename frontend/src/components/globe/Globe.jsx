@@ -6,6 +6,7 @@ import { TextureLoader } from 'three'
 import { useAppStore } from '../../store/appStore'
 import EventInjector from './EventInjector'
 import RippleOverlay from './RippleOverlay'
+import { useCountryData } from '../../hooks/useCountryData'
 import { Zap } from 'lucide-react'
 
 const toVec3 = (lon, lat, r = 1.005) => {
@@ -464,112 +465,161 @@ const FALLBACK_DATA = {
 }
 
 function CountryDrawer({ name, onClose, snapshot }) {
-  const meta    = COUNTRY_META[name] || { flag:'🌍', key: name }
-  const simData = snapshot?.country_data?.[meta.key] || {}
-  const data    = Object.keys(simData).length > 0
-    ? simData : (FALLBACK_DATA[meta.key] || {})
+  const meta = COUNTRY_META[name] || { flag: '🌍', key: name }
 
-  const stability    = data.stability        || 0.5
-  const tech         = data.tech_index       || 0.5
-  const renewable    = data.renewable_share  || 0.2
-  const unemployment = data.unemployment     || 0.05
-  const gdp          = data.gdp              || 1
-  const population   = data.population       || 50
-  const carbon       = data.carbon_emissions || gdp * 0.4
-  const isLive       = Object.keys(simData).length > 0
+  // ── REAL DATA from World Bank ──
+  const { data: liveData, loading } = useCountryData(name)
+
+  // Priority: live World Bank > simulation snapshot > hardcoded fallback
+  const simData = snapshot?.country_data?.[meta.key] || {}
+  const base    = liveData
+    || (Object.keys(simData).length > 0 ? simData : (FALLBACK_DATA[meta.key] || {}))
+
+  const stability    = liveData?.stability        ?? base.stability        ?? 0.5
+  const tech         = liveData?.tech_index       ?? base.tech_index       ?? 0.5
+  const renewable    = liveData?.renewable_share  ?? base.renewable_share  ?? 0.2
+  const unemployment = liveData?.unemployment     ?? base.unemployment     ?? 0.05
+  const gdp          = liveData?.gdp              ?? base.gdp              ?? 1
+  const population   = liveData?.population       ?? base.population       ?? 50
+  const carbon       = liveData?.carbon_emissions ?? base.carbon_emissions ?? (gdp * 0.4)
+  const lifeExp      = liveData?.life_expectancy  ?? null
+  const internet     = liveData?.internet         ?? null
+  const isLive       = !!liveData?._live
   const stabColor    = stability > 0.7 ? '#34d399' : stability > 0.45 ? '#fbbf24' : '#f87171'
 
   const stats = [
-    { label:'GDP',          value:`$${gdp.toFixed(2)}T`,                                                      color:'#a78bfa' },
-    { label:'Population',   value: population > 999 ? `${(population/1000).toFixed(2)}B` : `${population}M`, color:'#34d399' },
-    { label:'Tech Index',   value:`${(tech*100).toFixed(0)}%`,                                                color:'#60a5fa' },
-    { label:'Stability',    value:`${(stability*100).toFixed(0)}/100`,                                        color: stabColor },
-    { label:'Unemployment', value:`${(unemployment*100).toFixed(1)}%`,                                        color: unemployment > 0.15 ? '#f87171' : '#34d399' },
-    { label:'Renewables',   value:`${(renewable*100).toFixed(0)}%`,                                           color:'#34d399' },
-    { label:'CO₂ Emiss.',   value:`${carbon.toFixed(1)} GT`,                                                  color:'#fbbf24' },
-    { label:'Education',    value:`${Math.round(tech * 82 + 18)}/100`,                                        color:'#a78bfa' },
+    { label: 'GDP',          value: `$${gdp.toFixed(2)}T`,                                                       color: '#a78bfa' },
+    { label: 'Population',   value: population > 999 ? `${(population/1000).toFixed(2)}B` : `${Math.round(population)}M`, color: '#34d399' },
+    { label: 'Tech Index',   value: `${(tech * 100).toFixed(0)}%`,                                               color: '#60a5fa' },
+    { label: 'Stability',    value: `${(stability * 100).toFixed(0)}/100`,                                       color: stabColor  },
+    { label: 'Unemployment', value: `${(unemployment * 100).toFixed(1)}%`,                                       color: unemployment > 0.15 ? '#f87171' : '#34d399' },
+    { label: 'Renewables',   value: `${(renewable * 100).toFixed(0)}%`,                                          color: '#34d399'  },
+    { label: 'CO₂ Emiss.',   value: `${carbon.toFixed(1)} GT`,                                                   color: '#fbbf24'  },
+    { label: 'Life Exp.',    value: lifeExp ? `${lifeExp.toFixed(1)} yrs` : `${Math.round(tech * 82 + 18)}/100`, color: '#a78bfa'  },
+    { label: 'Internet',     value: internet ? `${internet.toFixed(0)}%` : '—',                                  color: '#93c5fd'  },
   ]
 
   const bars = [
-    { label:'Tech Progress',       val: tech,           color:'#a78bfa' },
-    { label:'Political Stability', val: stability,      color: stabColor },
-    { label:'Renewable Energy',    val: renewable,      color:'#34d399' },
-    { label:'Employment Rate',     val: 1-unemployment, color:'#60a5fa' },
+    { label: 'Tech Progress',       val: tech,           color: '#a78bfa' },
+    { label: 'Political Stability', val: stability,      color: stabColor },
+    { label: 'Renewable Energy',    val: renewable,      color: '#34d399' },
+    { label: 'Employment Rate',     val: 1 - unemployment, color: '#60a5fa' },
   ]
 
   return (
     <div style={{
-      position:'absolute', top:0, right:0, bottom:0, width:310,
-      background:'rgba(8,8,16,0.97)',
-      borderLeft:'1px solid rgba(124,58,237,0.30)',
-      backdropFilter:'blur(20px)',
-      zIndex:100, overflowY:'auto',
-      display:'flex', flexDirection:'column',
-      animation:'slideIn 0.22s cubic-bezier(0.4,0,0.2,1)',
+      position: 'absolute', top: 0, right: 0, bottom: 0, width: 310,
+      background: 'rgba(8,8,16,0.97)',
+      borderLeft: '1px solid rgba(124,58,237,0.30)',
+      backdropFilter: 'blur(20px)',
+      zIndex: 100, overflowY: 'auto',
+      display: 'flex', flexDirection: 'column',
+      animation: 'slideIn 0.22s cubic-bezier(0.4,0,0.2,1)',
     }}>
-      <style>{`
-        @keyframes slideIn {
-          from { transform:translateX(100%); opacity:0 }
-          to   { transform:translateX(0);    opacity:1 }
-        }
-      `}</style>
+      <style>{`@keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}} @keyframes spin{to{transform:rotate(360deg)}}`}</style>
 
-      <div style={{ padding:'18px 18px 14px', borderBottom:'1px solid rgba(124,58,237,0.15)', background:'rgba(124,58,237,0.04)', flexShrink:0 }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-            <span style={{ fontSize:38 }}>{meta.flag}</span>
+      {/* ── Header ── */}
+      <div style={{ padding: '18px 18px 14px', borderBottom: '1px solid rgba(124,58,237,0.15)', background: 'rgba(124,58,237,0.04)', flexShrink: 0 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 38 }}>{meta.flag}</span>
             <div>
-              <h2 style={{ fontFamily:'Syne, sans-serif', fontWeight:800, fontSize:18, color:'#f1f0ff', lineHeight:1.2, margin:0 }}>{name}</h2>
-              <div style={{ display:'flex', gap:5, marginTop:6, flexWrap:'wrap' }}>
-                <span style={{ fontSize:9, fontFamily:'JetBrains Mono, monospace', padding:'2px 7px', borderRadius:4, letterSpacing:1, fontWeight:600, background:`${stabColor}18`, color:stabColor, border:`1px solid ${stabColor}30` }}>
+              <h2 style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 18, color: '#f1f0ff', lineHeight: 1.2, margin: 0 }}>{name}</h2>
+              <div style={{ display: 'flex', gap: 5, marginTop: 6, flexWrap: 'wrap' }}>
+                {/* Stability badge */}
+                <span style={{ fontSize: 9, fontFamily: 'JetBrains Mono, monospace', padding: '2px 7px', borderRadius: 4, letterSpacing: 1, fontWeight: 600, background: `${stabColor}18`, color: stabColor, border: `1px solid ${stabColor}30` }}>
                   {stability > 0.7 ? 'STABLE' : stability > 0.45 ? 'TENSE' : 'UNSTABLE'}
                 </span>
-                <span style={{ fontSize:9, fontFamily:'JetBrains Mono, monospace', padding:'2px 7px', borderRadius:4, letterSpacing:1, background: isLive ? 'rgba(52,211,153,0.12)' : 'rgba(124,58,237,0.15)', color: isLive ? '#34d399' : '#a78bfa', border:`1px solid ${isLive ? 'rgba(52,211,153,0.25)' : 'rgba(124,58,237,0.25)'}` }}>
-                  {isLive ? '● LIVE SIM' : 'BASELINE'}
+                {/* Data source badge */}
+                <span style={{ fontSize: 9, fontFamily: 'JetBrains Mono, monospace', padding: '2px 7px', borderRadius: 4, letterSpacing: 1, background: loading ? 'rgba(255,215,0,0.10)' : isLive ? 'rgba(52,211,153,0.12)' : 'rgba(124,58,237,0.15)', color: loading ? '#ffd700' : isLive ? '#34d399' : '#a78bfa', border: `1px solid ${loading ? 'rgba(255,215,0,0.25)' : isLive ? 'rgba(52,211,153,0.25)' : 'rgba(124,58,237,0.25)'}` }}>
+                  {loading ? '⟳ LOADING...' : isLive ? '● WORLD BANK LIVE' : '◎ BASELINE'}
                 </span>
               </div>
             </div>
           </div>
-          <button onClick={onClose} style={{ background:'rgba(124,58,237,0.10)', border:'1px solid rgba(124,58,237,0.20)', cursor:'pointer', color:'rgba(241,240,255,0.6)', fontSize:16, width:28, height:28, borderRadius:6, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>×</button>
+          <button onClick={onClose} style={{ background: 'rgba(124,58,237,0.10)', border: '1px solid rgba(124,58,237,0.20)', cursor: 'pointer', color: 'rgba(241,240,255,0.6)', fontSize: 16, width: 28, height: 28, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>×</button>
         </div>
       </div>
 
-      <div style={{ padding:'14px 16px', borderBottom:'1px solid rgba(124,58,237,0.10)' }}>
-        <p style={{ fontSize:9, fontFamily:'JetBrains Mono, monospace', color:'rgba(241,240,255,0.28)', letterSpacing:2.5, marginBottom:10 }}>KEY INDICATORS</p>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+      {/* ── Loading bar ── */}
+      {loading && (
+        <div style={{ height: 2, background: 'rgba(124,58,237,0.1)', overflow: 'hidden', flexShrink: 0 }}>
+          <div style={{ height: '100%', width: '40%', background: 'linear-gradient(90deg, transparent, #a78bfa, transparent)', animation: 'slideIn 1.2s ease infinite' }} />
+        </div>
+      )}
+
+      {/* ── Data source strip ── */}
+      {!loading && (
+        <div style={{ padding: '5px 16px', flexShrink: 0, background: isLive ? 'rgba(52,211,153,0.04)' : 'rgba(124,58,237,0.04)', borderBottom: '1px solid rgba(124,58,237,0.08)' }}>
+          <span style={{ fontSize: 8, fontFamily: 'JetBrains Mono, monospace', letterSpacing: 1, color: isLive ? 'rgba(52,211,153,0.55)' : 'rgba(124,58,237,0.45)' }}>
+            {isLive
+              ? `✓ WORLD BANK OPEN DATA · ${liveData._year} · LIVE`
+              : '⚠ BASELINE ESTIMATES — WB DATA UNAVAILABLE'}
+          </span>
+        </div>
+      )}
+
+      {/* ── Stats grid ── */}
+      <div style={{ padding: '14px 16px', borderBottom: '1px solid rgba(124,58,237,0.10)' }}>
+        <p style={{ fontSize: 9, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(241,240,255,0.28)', letterSpacing: 2.5, marginBottom: 10 }}>KEY INDICATORS</p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           {stats.map(s => (
-            <div key={s.label} style={{ padding:'9px 11px', borderRadius:8, background:'rgba(124,58,237,0.06)', border:'1px solid rgba(124,58,237,0.12)' }}>
-              <p style={{ fontSize:9, fontFamily:'JetBrains Mono, monospace', color:'rgba(241,240,255,0.33)', marginBottom:4, letterSpacing:0.8 }}>{s.label}</p>
-              <p style={{ fontSize:14, fontWeight:700, fontFamily:'JetBrains Mono, monospace', color:s.color, margin:0 }}>{s.value}</p>
+            <div key={s.label} style={{ padding: '9px 11px', borderRadius: 8, background: 'rgba(124,58,237,0.06)', border: '1px solid rgba(124,58,237,0.12)', position: 'relative', overflow: 'hidden' }}>
+              {/* Loading shimmer */}
+              {loading && (
+                <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, transparent, rgba(124,58,237,0.08), transparent)', animation: 'slideIn 1.5s ease infinite' }} />
+              )}
+              <p style={{ fontSize: 9, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(241,240,255,0.33)', marginBottom: 4, letterSpacing: 0.8 }}>{s.label}</p>
+              <p style={{ fontSize: 14, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', color: loading ? 'rgba(241,240,255,0.15)' : s.color, margin: 0, transition: 'color 0.3s' }}>
+                {loading ? '———' : s.value}
+              </p>
             </div>
           ))}
         </div>
       </div>
 
-      <div style={{ padding:'14px 16px', borderBottom:'1px solid rgba(124,58,237,0.10)' }}>
-        <p style={{ fontSize:9, fontFamily:'JetBrains Mono, monospace', color:'rgba(241,240,255,0.28)', letterSpacing:2.5, marginBottom:12 }}>PERFORMANCE INDEX</p>
+      {/* ── Progress bars ── */}
+      <div style={{ padding: '14px 16px', borderBottom: '1px solid rgba(124,58,237,0.10)' }}>
+        <p style={{ fontSize: 9, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(241,240,255,0.28)', letterSpacing: 2.5, marginBottom: 12 }}>PERFORMANCE INDEX</p>
         {bars.map(b => (
-          <div key={b.label} style={{ marginBottom:12 }}>
-            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
-              <span style={{ fontSize:11, color:'rgba(241,240,255,0.52)' }}>{b.label}</span>
-              <span style={{ fontSize:11, fontFamily:'JetBrains Mono, monospace', color:b.color }}>{Math.round(b.val * 100)}</span>
+          <div key={b.label} style={{ marginBottom: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+              <span style={{ fontSize: 11, color: 'rgba(241,240,255,0.52)' }}>{b.label}</span>
+              <span style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: loading ? 'rgba(255,255,255,0.15)' : b.color }}>
+                {loading ? '—' : Math.round(b.val * 100)}
+              </span>
             </div>
-            <div style={{ height:3, background:'rgba(124,58,237,0.10)', borderRadius:2, overflow:'hidden' }}>
-              <div style={{ height:'100%', borderRadius:2, width:`${Math.min(100, b.val * 100)}%`, background:b.color, transition:'width 0.8s ease' }} />
+            <div style={{ height: 3, background: 'rgba(124,58,237,0.10)', borderRadius: 2, overflow: 'hidden' }}>
+              <div style={{ height: '100%', borderRadius: 2, width: loading ? '0%' : `${Math.min(100, b.val * 100)}%`, background: b.color, transition: 'width 0.9s ease' }} />
             </div>
           </div>
         ))}
       </div>
 
-      <div style={{ padding:'14px 16px' }}>
-        <p style={{ fontSize:9, fontFamily:'JetBrains Mono, monospace', color:'rgba(241,240,255,0.28)', letterSpacing:2.5, marginBottom:10 }}>SHARE OF WORLD GDP</p>
-        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-          <div style={{ flex:1, height:5, background:'rgba(124,58,237,0.10)', borderRadius:3, overflow:'hidden' }}>
-            <div style={{ height:'100%', borderRadius:3, width:`${Math.min(100, (gdp / 108) * 100)}%`, background:'linear-gradient(90deg, #5b21b6, #a78bfa)', transition:'width 1s ease' }} />
+      {/* ── GDP share ── */}
+      <div style={{ padding: '14px 16px' }}>
+        <p style={{ fontSize: 9, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(241,240,255,0.28)', letterSpacing: 2.5, marginBottom: 10 }}>SHARE OF WORLD GDP</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ flex: 1, height: 5, background: 'rgba(124,58,237,0.10)', borderRadius: 3, overflow: 'hidden' }}>
+            <div style={{ height: '100%', borderRadius: 3, width: `${Math.min(100, (gdp / 108) * 100)}%`, background: 'linear-gradient(90deg, #5b21b6, #a78bfa)', transition: 'width 1s ease' }} />
           </div>
-          <span style={{ fontSize:12, fontFamily:'JetBrains Mono, monospace', color:'#a78bfa', minWidth:36 }}>{((gdp / 108) * 100).toFixed(1)}%</span>
+          <span style={{ fontSize: 12, fontFamily: 'JetBrains Mono, monospace', color: '#a78bfa', minWidth: 36 }}>
+            {((gdp / 108) * 100).toFixed(1)}%
+          </span>
         </div>
-        <p style={{ fontSize:10, color:'rgba(241,240,255,0.28)', marginTop:5 }}>${gdp.toFixed(2)}T of ~$108T global GDP</p>
+        <p style={{ fontSize: 10, color: 'rgba(241,240,255,0.28)', marginTop: 5 }}>
+          ${gdp.toFixed(2)}T of ~$108T global GDP
+        </p>
+
+        {/* Extra WB fields shown only when live data available */}
+        {isLive && liveData.gini && (
+          <div style={{ marginTop: 12, padding: '8px 10px', background: 'rgba(124,58,237,0.06)', border: '1px solid rgba(124,58,237,0.12)', borderRadius: 6 }}>
+            <p style={{ fontSize: 8, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(241,240,255,0.3)', marginBottom: 4, letterSpacing: 1 }}>INEQUALITY (GINI)</p>
+            <p style={{ fontSize: 13, fontFamily: 'JetBrains Mono, monospace', fontWeight: 700, color: liveData.gini > 45 ? '#f87171' : liveData.gini > 35 ? '#fbbf24' : '#34d399', margin: 0 }}>
+              {liveData.gini.toFixed(1)}
+            </p>
+          </div>
+        )}
       </div>
     </div>
   )

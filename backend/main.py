@@ -9,6 +9,8 @@ from api.routes import simulation, scenarios, datasets, insights
 from api.routes.livedata_router import router as livedata_router
 from db.database import engine, Base
 from services.scheduler import start as start_scheduler, stop as stop_scheduler
+from api.data import router as data_router
+app.include_router(data_router)
 
 
 @asynccontextmanager

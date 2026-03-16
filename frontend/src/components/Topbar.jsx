@@ -1,138 +1,128 @@
+// frontend/src/components/Topbar.jsx
+import { useEffect } from 'react'
 import { useAppStore } from '../store/appStore'
-import { Play, Pause, ChevronRight, Plus, Menu, Zap } from 'lucide-react'
+import { useWorldVitals } from '../hooks/useWorldVitals'
 
 export default function Topbar() {
-  const {
-    currentYear, progress, isPlaying, simSpeed, simulationStatus,
-    togglePlay, setSimSpeed, openModal, toggleSidebar, activeScenario,
-  } = useAppStore()
+  const { scenario, year, running, speed, toggleRun, setSpeed } = useAppStore()
+  const { vitals, loading } = useWorldVitals()
 
-  const statusConfig = {
-    running:  { color: '#34d399', label: 'LIVE' },
-    idle:     { color: '#fbbf24', label: 'IDLE' },
-    complete: { color: '#a78bfa', label: 'DONE' },
-    error:    { color: '#f87171', label: 'ERROR' },
-  }[simulationStatus] || { color: '#fbbf24', label: 'IDLE' }
+  // Dynamic metrics — advance with simulation year
+  const yearsElapsed  = Math.max(0, year - 2025)
+  const worldGdp      = vitals ? (vitals.world_gdp_t  * Math.pow(1.025, yearsElapsed)) : 105
+  const worldPop      = vitals ? (vitals.world_pop_b  * Math.pow(1.007, yearsElapsed)) : 8.1
+  const tempAnomaly   = vitals ? (vitals.temp_anomaly + yearsElapsed * 0.018)           : 1.29
+  const co2Ppm        = vitals ? (vitals.co2_ppm      + yearsElapsed * 2.5)             : 422
+
+  const metrics = [
+    {
+      label: 'World GDP',
+      value: loading ? '...' : `$${worldGdp.toFixed(1)}T`,
+      color: '#a78bfa',
+      source: vitals?.sources?.economy,
+    },
+    {
+      label: 'Population',
+      value: loading ? '...' : `${worldPop.toFixed(2)}B`,
+      color: '#34d399',
+      source: vitals?.sources?.economy,
+    },
+    {
+      label: 'Temp Anomaly',
+      value: loading ? '...' : `+${tempAnomaly.toFixed(2)}°C`,
+      color: tempAnomaly > 1.5 ? '#f87171' : '#fbbf24',
+      source: vitals?.sources?.temperature,
+    },
+    {
+      label: 'CO₂ (ppm)',
+      value: loading ? '...' : co2Ppm.toFixed(1),
+      color: co2Ppm > 420 ? '#f87171' : '#fbbf24',
+      source: vitals?.sources?.co2,
+    },
+  ]
 
   return (
-    <header style={{
-      height: 58, display: 'flex', alignItems: 'center',
-      padding: '0 20px', gap: 14, flexShrink: 0, zIndex: 50,
-      background: 'rgba(10,10,15,0.98)',
-      borderBottom: '1px solid rgba(124,58,237,0.15)',
+    <div style={{
+      height: 48,
+      background: 'rgba(5,5,15,0.95)',
+      borderBottom: '1px solid rgba(124,58,237,0.20)',
       backdropFilter: 'blur(12px)',
+      display: 'flex',
+      alignItems: 'center',
+      padding: '0 16px',
+      gap: 12,
+      flexShrink: 0,
+      zIndex: 50,
     }}>
 
-      <button onClick={toggleSidebar} style={{
-        background: 'none', border: 'none', cursor: 'pointer',
-        color: 'var(--text-muted)', padding: 6, borderRadius: 6,
-        display: 'flex', transition: 'color 0.15s',
-      }}>
-        <Menu size={17} />
-      </button>
+      {/* ── Logo ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginRight: 8 }}>
+        <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'linear-gradient(135deg,#5b21b6,#a78bfa)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 900, color: '#fff', fontFamily: 'Syne, sans-serif', flexShrink: 0 }}>A</div>
+        <span style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 15, color: '#f1f0ff', letterSpacing: '-0.02em' }}>AICS</span>
+      </div>
 
-      {/* Logo */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginRight: 4 }}>
-        <div style={{
-          width: 28, height: 28, borderRadius: 8,
-          background: 'linear-gradient(135deg, #5b21b6, #7c3aed)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: '0 0 16px rgba(124,58,237,0.4)',
-        }}>
-          <Zap size={14} color="#fff" />
-        </div>
-        <span style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 18, letterSpacing: -0.5 }}>
-          AI<span style={{ color: 'var(--violet-300)' }}>CS</span>
+      {/* ── Scenario pill ── */}
+      <div style={{ background: 'rgba(124,58,237,0.15)', border: '1px solid rgba(124,58,237,0.30)', borderRadius: 20, padding: '3px 10px', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#a78bfa' }} />
+        <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: '#c4b5fd', letterSpacing: 1 }}>
+          SCN {scenario?.toUpperCase?.() || 'BASELINE'}
         </span>
       </div>
 
-      {/* Scenario chip */}
-      <div style={{
-        padding: '4px 12px', borderRadius: 6,
-        background: 'rgba(124,58,237,0.10)',
-        border: '1px solid rgba(124,58,237,0.22)',
-        fontSize: 11, fontFamily: 'JetBrains Mono,monospace',
-        color: 'var(--violet-300)', letterSpacing: 1,
-        display: 'flex', alignItems: 'center', gap: 6,
-      }}>
-        <span style={{ color: 'var(--text-muted)' }}>SCN</span>
-        {activeScenario.name.toUpperCase()}
+      {/* ── Year ── */}
+      <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: 'rgba(241,240,255,0.35)', letterSpacing: 1 }}>{year}</span>
+
+      {/* ── Playback controls ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <button
+          onClick={toggleRun}
+          style={{ background: running ? 'rgba(52,211,153,0.15)' : 'rgba(124,58,237,0.15)', border: `1px solid ${running ? 'rgba(52,211,153,0.35)' : 'rgba(124,58,237,0.35)'}`, borderRadius: 6, color: running ? '#34d399' : '#a78bfa', width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 11 }}
+        >
+          {running ? '⏸' : '▶'}
+        </button>
+        <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: 'rgba(241,240,255,0.3)', width: 28 }}>{speed}×</span>
+        <button
+          onClick={() => setSpeed(Math.min(10, speed + 1))}
+          style={{ background: 'rgba(124,58,237,0.10)', border: '1px solid rgba(124,58,237,0.20)', borderRadius: 4, color: '#a78bfa', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 10 }}
+        >+</button>
       </div>
 
-      {/* Progress track */}
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, maxWidth: 480, margin: '0 8px' }}>
-        <span style={{ fontSize: 10, fontFamily: 'JetBrains Mono,monospace', color: 'var(--text-dim)', minWidth: 32 }}>2025</span>
-        <div style={{ flex: 1, position: 'relative', height: 4, background: 'rgba(124,58,237,0.10)', borderRadius: 2, overflow: 'hidden' }}>
-          <div style={{
-            position: 'absolute', left: 0, top: 0, height: '100%',
-            width: `${progress}%`,
-            background: 'linear-gradient(90deg, #5b21b6, #a78bfa)',
-            borderRadius: 2, transition: 'width 0.5s ease',
-          }} />
-        </div>
-        <span style={{ fontSize: 10, fontFamily: 'JetBrains Mono,monospace', color: 'var(--text-dim)', minWidth: 32 }}>2125</span>
-      </div>
-
-      {/* Year display */}
-      <div style={{
-        padding: '5px 14px', borderRadius: 8,
-        background: 'rgba(124,58,237,0.08)',
-        border: '1px solid rgba(124,58,237,0.18)',
-      }}>
-        <span style={{ fontSize: 10, fontFamily: 'JetBrains Mono,monospace', color: 'var(--text-muted)' }}>YEAR </span>
-        <span style={{ fontSize: 18, fontFamily: 'JetBrains Mono,monospace', fontWeight: 700, color: 'var(--violet-200)' }}>
-          {currentYear}
+      {/* ── Live data source indicator ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+        <div style={{ width: 6, height: 6, borderRadius: '50%', background: loading ? '#fbbf24' : vitals ? '#34d399' : '#f87171', boxShadow: `0 0 6px ${loading ? '#fbbf24' : vitals ? '#34d399' : '#f87171'}`, animation: loading ? 'pulse 1s ease infinite' : 'none' }} />
+        <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: 'rgba(241,240,255,0.3)', letterSpacing: 0.5 }}>
+          {loading ? 'FETCHING LIVE DATA...' : vitals ? 'NASA · NOAA · WORLD BANK' : 'OFFLINE MODE'}
         </span>
       </div>
 
-      {/* Controls */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <button onClick={togglePlay} style={{
-          display: 'flex', alignItems: 'center', gap: 6,
-          padding: '7px 14px', borderRadius: 8, cursor: 'pointer',
-          border: `1px solid ${isPlaying ? 'rgba(52,211,153,0.35)' : 'rgba(124,58,237,0.30)'}`,
-          background: isPlaying ? 'rgba(52,211,153,0.08)' : 'rgba(124,58,237,0.10)',
-          color: isPlaying ? 'var(--ok)' : 'var(--violet-300)',
-          fontSize: 12, fontWeight: 600, transition: 'all 0.15s',
-        }}>
-          {isPlaying ? <Pause size={13} /> : <Play size={13} />}
-          {isPlaying ? 'PAUSE' : 'PLAY'}
-        </button>
+      <div style={{ flex: 1 }} />
 
-        <button onClick={() => setSimSpeed(simSpeed >= 8 ? 0.5 : simSpeed * 2)} style={{
-          padding: '7px 10px', borderRadius: 8, cursor: 'pointer',
-          border: '1px solid rgba(124,58,237,0.20)',
-          background: 'rgba(124,58,237,0.06)',
-          color: 'var(--text-muted)',
-          fontSize: 11, fontFamily: 'JetBrains Mono,monospace',
-          transition: 'all 0.15s',
-        }}>
-          {simSpeed}×
-        </button>
+      {/* ── Global Vitals ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+        {metrics.map((m, i) => (
+          <div
+            key={m.label}
+            title={m.source ? `Source: ${m.source}` : ''}
+            style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'flex-end',
+              padding: '3px 10px',
+              borderRight: i < metrics.length - 1 ? '1px solid rgba(124,58,237,0.12)' : 'none',
+              cursor: m.source ? 'help' : 'default',
+            }}
+          >
+            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 7, color: 'rgba(241,240,255,0.28)', letterSpacing: 0.8, marginBottom: 1 }}>{m.label}</span>
+            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 12, fontWeight: 700, color: loading ? 'rgba(241,240,255,0.2)' : m.color, transition: 'color 0.5s' }}>
+              {m.value}
+            </span>
+          </div>
+        ))}
       </div>
 
-      {/* Status */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 6,
-        fontSize: 10, fontFamily: 'JetBrains Mono,monospace',
-        padding: '5px 12px', borderRadius: 6,
-        background: `${statusConfig.color}12`,
-        border: `1px solid ${statusConfig.color}30`,
-        color: statusConfig.color, letterSpacing: 1.5,
-      }}>
-        <span style={{
-          width: 5, height: 5, borderRadius: '50%',
-          background: statusConfig.color,
-          boxShadow: simulationStatus === 'running' ? `0 0 6px ${statusConfig.color}` : 'none',
-          display: 'inline-block',
-        }} />
-        {statusConfig.label}
-      </div>
-
-      <button className="btn-primary" onClick={() => openModal('scenario')}
-        style={{ marginLeft: 4, padding: '7px 16px', fontSize: 12 }}>
-        <Plus size={13} /> New Scenario
+      {/* ── New Scenario button ── */}
+      <button style={{ background: 'rgba(124,58,237,0.15)', border: '1px solid rgba(124,58,237,0.35)', borderRadius: 8, color: '#c4b5fd', fontFamily: 'JetBrains Mono, monospace', fontSize: 9, padding: '5px 12px', cursor: 'pointer', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
+        + New Scenario
       </button>
-    </header>
+
+    </div>
   )
 }
